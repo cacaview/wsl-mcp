@@ -1,0 +1,67 @@
+{
+  "name": "wsl-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for WSL terminal management with persistent sessions and output polling",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "wsl-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "wsl",
+    "terminal",
+    "shell",
+    "pty",
+    "model-context-protocol",
+    "modelcontextprotocol",
+    "ai",
+    "llm",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/wsl-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/wsl-mcp/issues"
+  },
+  "homepage": "https://github.com/your-username/wsl-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "node-pty": "^1.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
