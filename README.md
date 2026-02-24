@@ -67,27 +67,7 @@ npm install
 npm run build
 ```
 
-## 使用方法
-
-### 作为 MCP 服务器
-
-在 MCP 客户端配置中添加：
-
-```json
-{
-  "mcpServers": {
-    "wsl": {
-      "command": "node",
-      "args": ["/path/to/wsl-mcp/dist/index.js"],
-      "env": {
-        "WSL_MCP_WSL_DISTRIBUTION": "Ubuntu"
-      }
-    }
-  }
-}
-```
-
-### 环境变量
+## 环境变量
 
 | 变量名                       | 描述                        | 默认值     |
 | ---------------------------- | --------------------------- | ---------- |
@@ -232,16 +212,16 @@ npm run build
 
 ```bash
 # 开发模式
-pnpm dev
+npm run dev
 
 # 运行测试
-pnpm test
+npm test
 
 # 类型检查
-pnpm typecheck
+npm run typecheck
 
 # 代码检查
-pnpm lint
+npm run lint
 ```
 
 ## 架构
@@ -272,12 +252,6 @@ src/
     ├── definitions.ts
     └── handlers.ts
 ```
-
-## 文档
-
-- [架构设计](docs/architecture.md) - 详细的系统架构说明
-- [测试报告](docs/test-report.md) - 完整的工具测试报告
-- [市场调研](docs/market-research.md) - 类似项目对比分析
 
 ## 许可证
 
