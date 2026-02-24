@@ -1,6 +1,6 @@
 {
   "name": "wsl-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for WSL terminal management with persistent sessions and output polling",
   "type": "module",
   "main": "dist/index.js",
