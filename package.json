@@ -34,16 +34,16 @@
     "llm",
     "claude"
   ],
-  "author": "",
+  "author": "cacaview <1475429618@qq.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-username/wsl-mcp.git"
+    "url": "git+https://github.com/cacaview/wsl-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/wsl-mcp/issues"
+    "url": "https://github.com/cacaview/wsl-mcp/issues"
   },
-  "homepage": "https://github.com/your-username/wsl-mcp#readme",
+  "homepage": "https://github.com/cacaview/wsl-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "node-pty": "^1.0.0",

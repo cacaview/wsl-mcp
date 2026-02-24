@@ -1,5 +1,8 @@
 # WSL-MCP
 
+[![npm version](https://badge.fury.io/js/wsl-mcp.svg)](https://www.npmjs.com/package/wsl-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/badge/GitHub-cacaview%2Fwsl--mcp-blue)](https://github.com/cacaview/wsl-mcp)
 
 一个支持持久化会话和终端轮询的 MCP (Model Context Protocol) 终端管理服务器。
 
@@ -54,7 +57,7 @@ wsl-mcp
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/wsl-mcp.git
+git clone https://github.com/cacaview/wsl-mcp.git
 cd wsl-mcp
 
 # 安装依赖
