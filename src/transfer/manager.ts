@@ -5,8 +5,6 @@
  */
 
 import { SessionManager } from '../session/manager';
-import { CommandContext } from '../session/types';
-import { Errors } from '../utils/errors';
 import {
   UploadFileOptions,
   UploadFileResult,

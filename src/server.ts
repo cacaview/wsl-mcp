@@ -144,7 +144,7 @@ export class WslMcpServer {
         fileTransferManager: this.fileTransferManager,
       });
 
-      return await handlers.handleToolCall(name as ToolName, args || {});
+      return await handlers.handleToolCall(name as ToolName, args || {}) as any;
     });
   }
 }

@@ -10,7 +10,6 @@ import {
   TailOptions,
   LogEntry,
   LogTailState,
-  PollingStatus,
 } from './types';
 
 /**

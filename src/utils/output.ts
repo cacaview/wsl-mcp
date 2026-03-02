@@ -72,7 +72,7 @@ export function cleanOutput(output: string): string {
  */
 export function cleanCommandEcho(output: string, command: string): string {
   const lines = output.split('\n');
-  const commandFirstWord = command.split(' ')[0];
+  const trimmedCommand = command.trim();
   let commandEchoSkipped = false;
 
   return lines.filter(line => {
@@ -81,8 +81,14 @@ export function cleanCommandEcho(output: string, command: string): string {
     // 跳过空行
     if (trimmed === '') return false;
 
-    // 跳过命令回显（第一行包含命令的第一个词）
-    if (!commandEchoSkipped && commandFirstWord && trimmed.includes(commandFirstWord)) {
+    // 跳过命令回显行：可能是完整命令，也可能是「prompt + 命令」形式
+    // 例如：echo "hello"  或  user@host:~$ echo "hello"
+    if (!commandEchoSkipped && trimmedCommand && (
+      trimmed === trimmedCommand ||
+      trimmed.endsWith(trimmedCommand) ||
+      trimmed.includes(`$ ${trimmedCommand}`) ||
+      trimmed.includes(`\$ ${trimmedCommand}`)
+    )) {
       commandEchoSkipped = true;
       return false;
     }
@@ -120,10 +126,10 @@ export function cleanPrompt(output: string): string {
     if (trimmed.match(/^user@.*:\~?\$?\s*$/)) return false;
     if (trimmed.match(/^user@.*:\S+\$?\s*$/)) return false;
     
-    // 移除包含提示符后跟 echo 命令的行
-    // 例如：(base)user@host:~$echo'===EXIT...'
-    if (trimmed.match(/^\(.*\).*@.*:.*\$echo/)) return false;
-    if (trimmed.match(/^.*@.*:.*\$echo/)) return false;
+    // 移除包含提示符后跟命令的行
+    // 例如：(base)user@host:~$echo'===EXIT...' 或 user@host:~$ echo '===EXIT...'
+    if (trimmed.match(/^\(.*\).*@.*:.*\$\s*echo/)) return false;
+    if (trimmed.match(/^.*@.*:.*\$\s*echo/)) return false;
     
     // 移除包含 echo 命令的提示符行
     if (trimmed.includes("echo'===")) return false;

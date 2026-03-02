@@ -10,7 +10,6 @@ import {
   PollingOptions,
   PollResult,
   BackgroundProcess,
-  PollingStatus,
   ProcessListItem,
 } from './types';
 
@@ -217,7 +216,7 @@ export class OutputPoller {
       }
     };
 
-    session.ptyProcess.onData(outputListener);
+    const dataDisposable = session.ptyProcess.onData(outputListener);
 
     try {
       // 执行命令
@@ -227,14 +226,14 @@ export class OutputPoller {
         timeout: config.timeout,
       });
 
-      process.exitCode = result.exitCode;
+      process.exitCode = result.exitCode ?? undefined;
       process.status = result.success ? 'completed' : 'error';
       process.error = result.error;
     } catch (error: any) {
       process.status = 'error';
       process.error = error.message;
     } finally {
-      session.ptyProcess.removeListener('data', outputListener);
+      dataDisposable.dispose();
       process.lastUpdatedAt = new Date();
     }
   }

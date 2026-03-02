@@ -378,6 +378,38 @@ export const TOOL_DEFINITIONS = {
       required: ['path'],
     },
   },
+
+  // 键盘模拟输入
+  terminal_send_input: {
+    name: 'terminal_send_input',
+    description: '向终端会话发送键盘输入。支持普通文本输入和特殊按键（如 Ctrl+C、方向键、功能键等）。常用于与交互式程序（vim、sudo、python REPL 等）交互。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: "会话 ID（默认: 'default'）",
+          default: 'default',
+        },
+        text: {
+          type: 'string',
+          description: '要输入的文本。支持转义序列，如 \\n（回车）、\\t（Tab）。与 keys 可同时使用，text 先发送。',
+        },
+        keys: {
+          type: 'array',
+          description: '要按下的按键序列。每个元素为按键名称，按顺序依次发送。\n支持的按键：\n- 特殊键：enter, tab, escape/esc, backspace, delete, space, insert, home, end, page_up, page_down\n- 方向键：up/arrow_up, down/arrow_down, left/arrow_left, right/arrow_right\n- Ctrl 组合键：ctrl+a 到 ctrl+z（如 ctrl+c 中断、ctrl+d 关闭输入、ctrl+z 挂起、ctrl+l 清屏）\n- 功能键：f1 到 f12',
+          items: {
+            type: 'string',
+          },
+        },
+        delay: {
+          type: 'number',
+          description: '按键序列中每次按键之间的延迟（毫秒，默认: 0）。在需要等待终端响应时使用。',
+          default: 0,
+        },
+      },
+    },
+  },
 } as const;
 
 /**

@@ -7,7 +7,7 @@
 import { Backend, SystemInfo } from '../backends';
 import { SessionManager, CommandResult, SessionListItem } from '../session';
 import { OutputPoller, LogTailer, PollResult, ProcessListItem, LogEntry } from '../polling';
-import { FileTransferManager, UploadFileResult, DownloadFileResult, ListDirectoryResult } from '../transfer';
+import { FileTransferManager } from '../transfer';
 import { ToolName } from './definitions';
 
 /**
@@ -99,6 +99,9 @@ export function createToolHandlers(context: ToolHandlerContext) {
           
           case 'terminal_list_directory':
             return await handleListDirectory(args, fileTransferManager);
+
+          case 'terminal_send_input':
+            return await handleSendInput(args, sessionManager);
           
           default:
             return {
@@ -573,6 +576,111 @@ async function handleDownloadFile(
       }, null, 2),
     }],
     isError: !result.success,
+  };
+}
+
+/**
+ * 按键名称到原始序列的映射表
+ */
+const KEY_MAP: Record<string, string> = {
+  // 基本特殊键
+  enter:      '\r',
+  return:     '\r',
+  tab:        '\t',
+  escape:     '\x1b',
+  esc:        '\x1b',
+  backspace:  '\x7f',
+  delete:     '\x1b[3~',
+  space:      ' ',
+  insert:     '\x1b[2~',
+  home:       '\x1b[H',
+  end:        '\x1b[F',
+  page_up:    '\x1b[5~',
+  pageup:     '\x1b[5~',
+  page_down:  '\x1b[6~',
+  pagedown:   '\x1b[6~',
+
+  // 方向键
+  up:          '\x1b[A',
+  arrow_up:    '\x1b[A',
+  down:        '\x1b[B',
+  arrow_down:  '\x1b[B',
+  right:       '\x1b[C',
+  arrow_right: '\x1b[C',
+  left:        '\x1b[D',
+  arrow_left:  '\x1b[D',
+
+  // Ctrl 组合键 (ctrl+a = \x01, ctrl+b = \x02, ...)
+  'ctrl+a': '\x01', 'ctrl+b': '\x02', 'ctrl+c': '\x03', 'ctrl+d': '\x04',
+  'ctrl+e': '\x05', 'ctrl+f': '\x06', 'ctrl+g': '\x07', 'ctrl+h': '\x08',
+  'ctrl+i': '\x09', 'ctrl+j': '\x0a', 'ctrl+k': '\x0b', 'ctrl+l': '\x0c',
+  'ctrl+m': '\x0d', 'ctrl+n': '\x0e', 'ctrl+o': '\x0f', 'ctrl+p': '\x10',
+  'ctrl+q': '\x11', 'ctrl+r': '\x12', 'ctrl+s': '\x13', 'ctrl+t': '\x14',
+  'ctrl+u': '\x15', 'ctrl+v': '\x16', 'ctrl+w': '\x17', 'ctrl+x': '\x18',
+  'ctrl+y': '\x19', 'ctrl+z': '\x1a',
+
+  // 功能键 (xterm 标准)
+  f1:  '\x1bOP',   f2:  '\x1bOQ',   f3:  '\x1bOR',   f4:  '\x1bOS',
+  f5:  '\x1b[15~', f6:  '\x1b[17~', f7:  '\x1b[18~', f8:  '\x1b[19~',
+  f9:  '\x1b[20~', f10: '\x1b[21~', f11: '\x1b[23~', f12: '\x1b[24~',
+};
+
+/**
+ * 将按键名称解析为原始序列，未知按键将原样返回
+ */
+function resolveKey(key: string): string {
+  const normalized = key.toLowerCase().trim();
+  return KEY_MAP[normalized] ?? key;
+}
+
+/**
+ * 处理键盘模拟输入
+ */
+async function handleSendInput(
+  args: ToolCallArgs,
+  sessionManager: SessionManager
+): Promise<ToolResult> {
+  const sessionId = (args.session_id as string) || 'default';
+  const text = args.text as string | undefined;
+  const keys = args.keys as string[] | undefined;
+  const delay = (args.delay as number) || 0;
+
+  if (!text && (!keys || keys.length === 0)) {
+    return {
+      content: [{ type: 'text', text: 'Error: 必须提供 text 或 keys 中的至少一个' }],
+      isError: true,
+    };
+  }
+
+  const sent: string[] = [];
+
+  // 先发送文本
+  if (text !== undefined && text !== '') {
+    await sessionManager.sendInput(sessionId, text);
+    sent.push(`text: ${JSON.stringify(text)}`);
+  }
+
+  // 再依次发送按键
+  if (keys && keys.length > 0) {
+    for (let i = 0; i < keys.length; i++) {
+      const raw = resolveKey(keys[i]);
+      await sessionManager.sendInput(sessionId, raw);
+      sent.push(`key: ${keys[i]}`);
+      if (delay > 0 && i < keys.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        success: true,
+        session_id: sessionId,
+        sent,
+      }, null, 2),
+    }],
   };
 }
 

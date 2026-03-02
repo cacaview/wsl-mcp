@@ -11,14 +11,19 @@ import { Backend } from '../backends';
 import {
   TerminalSession,
   SessionOptions,
-  SessionStatus,
   CommandContext,
   CommandResult,
   SessionManagerConfig,
   SessionListItem,
 } from './types';
-import { cleanOutput, cleanMarkers, cleanCommandEcho, cleanPrompt } from '../utils/output';
-import { Errors, TerminalError, ErrorCode } from '../utils/errors';
+import { Errors } from '../utils/errors';
+
+/**
+ * shell 安全引用（单引号）
+ */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}' `;
+}
 
 /**
  * 默认配置
@@ -96,7 +101,7 @@ export class SessionManager {
       lastCommand: '',
       createdAt: new Date(),
       lastActivityAt: new Date(),
-      cwd: options?.cwd || this.backend.getDefaultCwd(),
+      cwd: options?.cwd || '',  // 空字符串表示使用 WSL 默认目录（用户家目录）
       env: options?.env || {},
     };
 
@@ -182,7 +187,10 @@ export class SessionManager {
 
   /**
    * 在会话中执行命令
-   * 参考 mcp-shellkeeper 的实现方式
+   *
+   * 使用 backend.execute()（spawn 方式）代替 PTY write，
+   * 规避 Windows ConPTY + WSL 下 PTY stdin 无法传入 bash 的已知问题。
+   * 通过特殊标记追踪命令执行后的新 cwd，保证 cd 命令跨调用生效。
    */
   async executeCommand(context: CommandContext): Promise<CommandResult> {
     // 验证命令
@@ -191,11 +199,10 @@ export class SessionManager {
     }
 
     const session = await this.getOrCreateSession(context.sessionId);
-    
+
     if (session.status === 'busy') {
       throw Errors.sessionBusy(context.sessionId || 'default');
     }
-
     if (session.status === 'closed') {
       throw Errors.sessionClosed(context.sessionId || 'default');
     }
@@ -207,110 +214,76 @@ export class SessionManager {
     const startTime = Date.now();
     const timeout = context.timeout || this.config.defaultTimeout;
 
-    // 清空输出缓冲区
-    session.outputBuffer = '';
+    try {
+      // 构建完整命令：如有 virtualCwd 则先 cd，然后执行用户命令，
+      // 最后用 printf 输出当前目录供追踪
+      const cwdMark = '__MCP_CWD_MARK__';
+      const cwdPart = session.cwd ? `cd ${shellQuote(session.cwd)} 2>/dev/null && ` : '';
+      const fullCommand = `${cwdPart}(${context.command}); printf '\\n${cwdMark}:%s\\n' "$(pwd)"`;
 
-    // 等待一下确保缓冲区清空
-    await sleep(100);
+      const result = await session.backend.execute(fullCommand, {
+        timeout,
+        env: Object.keys(session.env).length > 0 ? session.env : undefined,
+      });
 
-    // 生成唯一标记
-    const timestamp = Date.now();
-    const startMarker = `===START${timestamp}===`;
-    const endMarker = `===END${timestamp}===`;
-    const exitMarker = `===EXIT${timestamp}===`;
-
-    // 发送命令和标记
-    session.ptyProcess.write(`echo '${startMarker}'\n`);
-    await sleep(50);
-    session.ptyProcess.write(`${context.command}\n`);
-    await sleep(50);
-    session.ptyProcess.write(`echo '${exitMarker}'$?\n`);
-    await sleep(50);
-    session.ptyProcess.write(`echo '${endMarker}'\n`);
-
-    // 等待命令完成
-    const startTimeWait = Date.now();
-    let foundEnd = false;
-
-    while (Date.now() - startTimeWait < timeout) {
-      const output = session.outputBuffer;
-
-      if (output.includes(endMarker)) {
-        await sleep(200);  // 等待更多输出
-        foundEnd = true;
-        break;
+      // 解析并剥离 cwd 标记，更新 session.cwd
+      const cwdRegex = new RegExp(`\n${cwdMark}:(.+)\n?$`);
+      const cwdMatch = result.stdout.match(cwdRegex);
+      let output = result.stdout;
+      if (cwdMatch) {
+        session.cwd = cwdMatch[1].trim();
+        output = result.stdout.slice(0, result.stdout.lastIndexOf(`\n${cwdMark}:`));
       }
 
-      await sleep(100);
-    }
+      // stderr 不并入输出：用户可通过 command 2>&1 自行合并
+      // wsl.exe 自身也会向 stderr 输出代理/Docker 警告，并不属于命令输出
 
-    if (!foundEnd) {
-      session.status = 'ready';
+      session.lastActivityAt = new Date();
+
+      return {
+        sessionId: session.id,
+        command: context.command,
+        output: output.trim(),
+        exitCode: result.exitCode,
+        success: (result.exitCode ?? 1) === 0,
+        duration: Date.now() - startTime,
+        timedOut: result.timedOut || false,
+      };
+    } catch (error: any) {
       return {
         sessionId: session.id,
         command: context.command,
         output: '',
-        exitCode: null,
+        exitCode: 1,
         success: false,
         duration: Date.now() - startTime,
-        timedOut: true,
-        error: `Command timeout after ${timeout}ms`,
-      };
-    }
-
-    session.status = 'ready';
-
-    const output = session.outputBuffer;
-
-    // 解析输出
-    const startIdx = output.lastIndexOf(startMarker);
-    const endIdx = output.lastIndexOf(endMarker);
-
-    if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) {
-      return {
-        sessionId: session.id,
-        command: context.command,
-        output: cleanOutput(output),
-        exitCode: 0,
-        success: true,
-        duration: Date.now() - startTime,
         timedOut: false,
+        error: error.message,
       };
+    } finally {
+      session.status = 'ready';
+    }
+  }
+
+  /**
+   * 向会话发送原始输入（键盘模拟）
+   */
+  async sendInput(sessionId: string, rawInput: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      // 会话不存在时自动创建
+      const newSession = await this.getOrCreateSession(sessionId);
+      newSession.ptyProcess.write(rawInput);
+      newSession.lastActivityAt = new Date();
+      return;
     }
 
-    // 提取退出码
-    let exitCode = 0;
-    const exitMarkerPattern = new RegExp(`${exitMarker}(\\d+)`);
-    const exitMatch = output.match(exitMarkerPattern);
-    if (exitMatch) {
-      exitCode = parseInt(exitMatch[1], 10);
+    if (session.status === 'closed') {
+      throw Errors.sessionClosed(sessionId);
     }
 
-    // 提取实际输出
-    let result = output.substring(startIdx + startMarker.length, endIdx);
-
-    // 使用工具函数清理输出
-    // 1. 先清理 ANSI 转义序列
-    result = cleanOutput(result);
-    
-    // 2. 清理标记行
-    result = cleanMarkers(result, { startMarker, endMarker, exitMarker });
-    
-    // 3. 清理命令回显
-    result = cleanCommandEcho(result, context.command);
-    
-    // 4. 清理 shell 提示符
-    result = cleanPrompt(result);
-
-    return {
-      sessionId: session.id,
-      command: context.command,
-      output: result,
-      exitCode,
-      success: exitCode === 0,
-      duration: Date.now() - startTime,
-      timedOut: false,
-    };
+    session.ptyProcess.write(rawInput);
+    session.lastActivityAt = new Date();
   }
 
   /**

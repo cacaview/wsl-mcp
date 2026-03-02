@@ -5,7 +5,7 @@
  */
 
 import type { IPty } from 'node-pty';
-import { Backend, BackendConfig, SystemInfo, PtyOptions } from './types';
+import { Backend, BackendType, SystemInfo, PtyOptions, ExecuteOptions, ExecuteResult } from './types';
 
 /**
  * Docker 后端配置
@@ -28,6 +28,7 @@ export interface DockerBackendConfig {
  * Docker 后端
  */
 export class DockerBackend implements Backend {
+  readonly type: BackendType = 'docker';
   private config: DockerBackendConfig;
   private containerId: string | null = null;
   private available: boolean | null = null;
@@ -115,9 +116,35 @@ export class DockerBackend implements Backend {
       user: 'root',
       homeDir: '/root',
       defaultShell: '/bin/bash',
-      wsl: false,
-      docker: true,
+      docker: { containerId: this.containerId || undefined },
     };
+  }
+
+  /**
+   * 创建 PTY 进程
+   */
+  /**
+   * 执行命令（无状态）
+   */
+  async execute(command: string, options?: ExecuteOptions): Promise<ExecuteResult> {
+    const startTime = Date.now();
+    await this.ensureContainer();
+    const timeout = options?.timeout || 30000;
+
+    return new Promise((resolve) => {
+      const { exec } = require('child_process');
+      let timedOut = false;
+      const dockerCmd = `docker exec ${this.containerId} sh -c ${JSON.stringify(command)}`;
+      const child = exec(dockerCmd, { encoding: 'utf8' }, (error: Error | null, stdout: string, stderr: string) => {
+        clearTimeout(timeoutId);
+        const exitCode = timedOut ? null : (error ? ((error as any).code ?? 1) : 0);
+        resolve({ stdout: stdout || '', stderr: stderr || '', exitCode, command, duration: Date.now() - startTime, timedOut });
+      });
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, timeout);
+    });
   }
 
   /**
@@ -132,7 +159,6 @@ export class DockerBackend implements Backend {
 
     // 构建 docker exec 命令
     const shell = options.shell || this.getDefaultShell();
-    const cwd = options.cwd || this.getDefaultCwd();
 
     const args = [
       'exec',

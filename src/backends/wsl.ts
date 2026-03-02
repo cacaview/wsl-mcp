@@ -5,7 +5,8 @@
  */
 
 import * as pty from 'node-pty';
-import { spawn, ChildProcess } from 'child_process';
+import type { IPty } from 'node-pty';
+import { spawn } from 'child_process';
 import {
   Backend,
   BackendType,
@@ -13,7 +14,6 @@ import {
   PtyOptions,
   ExecuteOptions,
   ExecuteResult,
-  BackendConfig,
 } from './types';
 
 /**
@@ -114,7 +114,9 @@ export class WslBackend implements Backend {
    * 创建 PTY 会话
    */
   async createPty(options: PtyOptions): Promise<IPty> {
-    const args = this.buildWslArgs(['--exec', options.shell]);
+    // 使用 -- 分隔符 + bash -i 确保以交互模式启动
+    // 不能用 --exec，那会跳过 shell 的交互初始化，导致 PTY 写入被忽略
+    const args = this.buildWslArgs(['--', options.shell, '-i']);
 
     const ptyProcess = pty.spawn(this.wslExecutable, args, {
       name: options.term || 'xterm-256color',
@@ -152,6 +154,7 @@ export class WslBackend implements Backend {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      const stderrChunks: Buffer[] = [];
 
       // 设置超时
       const timeoutId = setTimeout(() => {
@@ -163,8 +166,8 @@ export class WslBackend implements Backend {
         stdout += data.toString();
       });
 
-      proc.stderr?.on('data', (data) => {
-        stderr += data.toString();
+      proc.stderr?.on('data', (data: Buffer) => {
+        stderrChunks.push(data);
       });
 
       // 如果有输入，写入 stdin
@@ -175,6 +178,9 @@ export class WslBackend implements Backend {
 
       proc.on('close', (code) => {
         clearTimeout(timeoutId);
+        // stderr 来自 wsl.exe（Windows 进程），编码为 UTF-16LE，解码并过滤系统通知
+        const rawStderr = Buffer.concat(stderrChunks);
+        stderr = rawStderr.toString('utf16le').replace(/\0/g, '');
         resolve({
           stdout,
           stderr,
@@ -229,29 +235,35 @@ export class WslBackend implements Backend {
         windowsHide: true,
       });
 
-      let output = '';
-      
-      proc.stdout?.on('data', (data) => {
-        output += data.toString();
+      const chunks: Buffer[] = [];
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        chunks.push(data);
       });
 
       proc.on('close', () => {
         try {
+          // wsl.exe 在 Windows 上输出 UTF-16LE，需要正确解码并去除 null 字节
+          const raw = Buffer.concat(chunks);
+          const output = raw.toString('utf16le').replace(/\0/g, '');
+
           // 解析输出，格式类似：
           // NAME            STATE           VERSION
           // * Ubuntu        Running         2
           //   Debian        Stopped         2
-          const lines = output.split('\n').filter(line => line.trim());
+          const lines = output.split(/\r?\n/).filter(line => line.trim());
           const distributions: string[] = [];
           let defaultDistro: string | undefined;
 
           for (const line of lines.slice(1)) { // 跳过标题行
             const match = line.match(/^\s*(\*?)\s*(\S+)/);
             if (match) {
-              const name = match[2];
-              distributions.push(name);
-              if (match[1] === '*') {
-                defaultDistro = name;
+              const name = match[2].trim();
+              if (name && name !== 'NAME') {
+                distributions.push(name);
+                if (match[1].includes('*')) {
+                  defaultDistro = name;
+                }
               }
             }
           }
@@ -277,15 +289,17 @@ export class WslBackend implements Backend {
         windowsHide: true,
       });
 
-      let output = '';
-      
-      proc.stdout?.on('data', (data) => {
-        output += data.toString();
+      const chunks: Buffer[] = [];
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        chunks.push(data);
       });
 
       proc.on('close', () => {
-        // WSL 2 是默认的现代版本
-        // 如果 --version 命令存在，说明是 WSL 2
+        // wsl.exe 输出 UTF-16LE，解码并去除 null 字节
+        const raw = Buffer.concat(chunks);
+        const output = raw.toString('utf16le').replace(/\0/g, '');
+        // 如果 --version 命令存在且输出包含 WSL，说明是 WSL 2
         resolve(output.includes('WSL') ? 2 : 1);
       });
 
